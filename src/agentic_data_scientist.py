@@ -1,45 +1,20 @@
-import io
-import traceback
-import contextlib
-from typing import TypedDict, Literal, Any
+from typing import Literal
 
-import pandas as pd
 import gradio as gr
-from dotenv import load_dotenv
 
 # LangGraph
 from langgraph.graph import END, StateGraph, START
 
 # LangChain
 from langchain_ollama import ChatOllama
-from langchain_core.prompts import ChatPromptTemplate
 
-# Helper utilities
+from coder import coder_agent
+from executor import executor_agent
+from input_agent import ui_input_agent
+from planner import planner_agent
+from reviewer import reviewer_agent
+from state import GraphState
 
-
-def _normalise_path(file_obj) -> str:
-    if file_obj is None:
-        return ""
-    if isinstance(file_obj, str):
-        return file_obj
-    return getattr(file_obj, "name", "")
-
-
-def load_file(file_obj):
-    path = _normalise_path(file_obj)
-    if not path:
-        return pd.DataFrame()
-    ext = path.lower().split(".")[-1]
-    try:
-        if ext == "csv":
-            df = pd.read_csv(path)
-        elif ext in ("xlsx", "xls"):
-            df = pd.read_excel(path)
-        else:
-            raise ValueError("Unsupported file type. Please upload CSV or Excel.")
-    except Exception as exc:
-        raise ValueError(f"Failed to read the uploaded file: {exc}") from exc
-    return df.drop(columns="Date", errors="ignore")
 
 def run_workflow(task: str, uploaded_file) -> dict:
     final_state = app.invoke({"task": task, "uploaded_file": uploaded_file})
@@ -76,224 +51,16 @@ llm = ChatOllama(
 )
 
 
-# GraphState definition
-
-class GraphState(TypedDict, total=False):
-    task: str
-    uploaded_file: Any
-    dataset_info: str
-    instructions: str
-    code: str
-    exec_output: str
-    exec_error: str
-    attempts: int
-    suggestions: str
-
-# Input Agent
-
-def ui_input_agent(state: GraphState) -> GraphState:
-    global df
-    df = load_file(state.get("uploaded_file"))
-    if isinstance(df, pd.DataFrame) and not df.empty:
-        cols = ", ".join(df.columns.tolist())
-        dataset_info = f"The uploaded file contains the following columns: {cols}."
-    else:
-        dataset_info = "No data was uploaded (empty DataFrame)."
-    return {
-        "task": state["task"],
-        "uploaded_file": state.get("uploaded_file"),
-        "dataset_info": dataset_info,
-        "attempts": 0,
-        "suggestions": "",
-    }
-
-# Planner Agent
-
-planner_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """
-You are the Planner in an autonomous data-science workflow.
-
-A pandas DataFrame named `df` is already loaded and available to the workflow.
-Do not include steps for loading, opening, or locating the dataset.
-
-Create a concise numbered plan that is sufficient to answer the user's task.
-
-Rules:
-- Prefer the simplest plan that fully answers the task.
-- Do not add analyses that were not requested.
-- Use the dataset information provided to understand the available columns.
-- Focus on what the Coder must do with the existing `df`.
-- Do not write Python code.
-- When assessing data completeness, do not rely only on pandas null detection.
-  Consider whether unusual sentinel values or strings such as "?", "NA",
-  "N/A", "null", empty strings, or similar values may represent missing data.
-- Treat such values as suspicious candidates, not automatically as missing,
-  and inspect their occurrence before drawing conclusions about completeness.
-"""
-        ),
-        (
-            "human",
-            "Task description: {task}\n"
-            "Dataset info: {dataset_info}\n\n"
-            "Provide the numbered instructions."
-        ),
-    ]
-)
-
-
-def planner_agent(state: GraphState) -> GraphState:
-    prompt = planner_prompt.format_messages(
-        task=state["task"],
-        dataset_info=state["dataset_info"],
-    )
-    response = llm.invoke(prompt)
-    instructions = response.content.strip()
-    return {"instructions": instructions}
-
-
-# Coder Agent
-
-coder_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """You are the Coder in an autonomous data-science workflow.
-
-A pandas DataFrame named `df` is already loaded and available in the
-execution environment. Never reload the dataset and never invent file paths.
-
-Write Python code that follows the Planner's instructions.
-
-Rules:
-- Return ONLY executable Python code.
-- Do not use Markdown code fences.
-- Do not provide explanations.
-- Do not use pip, shell commands, or package installation commands.
-- Use the existing `df` DataFrame directly.
-- Print the results required by the task.
-"""
-        ),
-        (
-            "human",
-            "Instructions:\n{instructions}\n\nWrite the Python code:"
-        ),
-    ]
-)
-
-def coder_agent(state: GraphState) -> GraphState:
-    prompt = coder_prompt.format_messages(instructions=state["instructions"])
-    response = llm.invoke(prompt)
-    code = response.content.strip()
-    if code.startswith("```python"):
-        code = code[len("```python"):].strip()
-    if code.startswith("```"):
-        code = code[3:].strip()
-    if code.endswith("```"):
-        code = code[:-3].strip()
-    return {"code": code}
-
-# Executor Agent
-
-def executor_agent(state: GraphState) -> GraphState:
-    code = state.get("code", "")
-    attempts = state.get("attempts", 0) + 1
-
-    if not code:
-        return {
-            "exec_output": "",
-            "exec_error": "No code was provided by the coder.",
-            "attempts": attempts,
-        }
-
-    exec_namespace = dict(globals())
-    exec_namespace.update({"__name__": "__main__"})
-    stdout_buf = io.StringIO()
-
-    try:
-        with contextlib.redirect_stdout(stdout_buf):
-            exec(code, exec_namespace)
-
-        return {
-            "exec_output": stdout_buf.getvalue(),
-            "exec_error": "",
-            "attempts": attempts,
-        }
-
-    except Exception:
-        tb = traceback.format_exc()
-
-        return {
-            "exec_output": "",
-            "exec_error": tb,
-            "attempts": attempts,
-        }
-
-# Reviewer Agent
-
-reviewer_prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            """
-You are the Reviewer in an autonomous data-science workflow.
-
-Your job is to inspect Python execution errors and correct the code.
-
-A pandas DataFrame named `df` is already loaded and available in the
-execution environment.
-
-Rules:
-- If you can fix the error, return ONLY the corrected executable Python code.
-- Do not use Markdown code fences.
-- Do not provide explanations together with corrected code.
-- Never reload the dataset.
-- Never invent file paths.
-- Do not use pip, shell commands, or installation commands.
-- Preserve the original analytical intent.
-- If the error cannot reasonably be fixed automatically, respond exactly
-  with:
-
-SUGGEST: <brief recommendation for the human>
-"""
-        ),
-        (
-            "human",
-            "Execution error:\n{error}\n\n"
-            "Original code:\n{code}\n\n"
-            "Return corrected code or SUGGEST:"
-        ),
-    ]
-)
-
-def reviewer_agent(state: GraphState) -> GraphState:
-    prompt = reviewer_prompt.format_messages(error=state["exec_error"], code=state["code"])
-    response = llm.invoke(prompt)
-    reply = response.content.strip()
-    if reply.upper().startswith("SUGGEST:"):
-        suggestion = reply[len("SUGGEST:"):].strip()
-        return {"suggestions": suggestion, "code": state["code"]}
-    corrected = reply
-    if corrected.startswith("```python"):
-        corrected = corrected[len("```python"):].strip()
-    if corrected.startswith("```"):
-        corrected = corrected[3:].strip()
-    if corrected.endswith("```"):
-        corrected = corrected[:-3].strip()
-    return {"code": corrected, "suggestions": ""}
-
 # Workflow definition
 
 MAX_ATTEMPTS = 5
 workflow = StateGraph(GraphState)
 
 workflow.add_node("input", ui_input_agent)
-workflow.add_node("planner", planner_agent)
-workflow.add_node("coder", coder_agent)
+workflow.add_node("planner", lambda state: planner_agent(state, llm))
+workflow.add_node("coder", lambda state: coder_agent(state, llm))
 workflow.add_node("executor", executor_agent)
-workflow.add_node("reviewer", reviewer_agent)
+workflow.add_node("reviewer", lambda state: reviewer_agent(state, llm))
 
 workflow.add_edge(START, "input")
 workflow.add_edge("input", "planner")
