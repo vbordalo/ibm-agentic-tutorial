@@ -1,6 +1,6 @@
+import contextlib
 import io
 import traceback
-import contextlib
 
 
 def executor_agent(state):
