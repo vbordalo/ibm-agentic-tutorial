@@ -1,5 +1,5 @@
 from typing import Literal
-
+from pathlib import Path
 import gradio as gr
 
 # LangGraph
@@ -14,10 +14,51 @@ from input_agent import ui_input_agent
 from planner import planner_agent
 from reviewer import reviewer_agent
 from state import GraphState
-
+from run_trace import RunTrace
 
 def run_workflow(task: str, uploaded_file) -> dict:
+
+    trace = RunTrace(
+        model=MODEL,
+        temperature=0.0,
+        task=task,
+        dataset_name=Path(str(uploaded_file)).name if uploaded_file else None,
+    )
+
     final_state = app.invoke({"task": task, "uploaded_file": uploaded_file})
+
+    if final_state.get("exec_error"):
+        if final_state.get("suggestions"):
+            run_status = "needs_human"
+        else:
+            run_status = "failed"
+    else:
+        run_status = "success"
+
+    trace.finish(
+        status=run_status,
+        final_state={
+            "instructions": final_state.get("instructions", ""),
+            "code": final_state.get("code", ""),
+            "exec_output": final_state.get("exec_output", ""),
+            "exec_error": final_state.get("exec_error", ""),
+            "attempts": final_state.get("attempts", 0),
+            "suggestions": final_state.get("suggestions", ""),
+        },
+    )
+
+    trace.finish(
+        status=run_status,
+        final_state={
+            "instructions": final_state.get("instructions", ""),
+            "code": final_state.get("code", ""),
+            "exec_output": final_state.get("exec_output", ""),
+            "exec_error": final_state.get("exec_error", ""),
+            "attempts": final_state.get("attempts", 0),
+            "suggestions": final_state.get("suggestions", ""),
+        },
+    )
+
     result = {
         "planner": final_state.get("instructions", ""),
         "coder": final_state.get("code", ""),
