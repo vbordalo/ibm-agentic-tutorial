@@ -7,19 +7,22 @@ planner_prompt = ChatPromptTemplate.from_messages(
             """
 You are the Planner in an autonomous data-science workflow.
 
-A pandas DataFrame named `df` is already loaded and available to the workflow.
-Do not include steps for loading, opening, or locating the dataset.
+You are working inside a data-science workspace that may contain one or
+more datasets, documentation files, templates, configuration files, or
+other resources.
 
 Create a concise numbered plan that is sufficient to answer the user's task.
 
 Rules:
 - Prefer the simplest plan that fully answers the task.
 - Do not add analyses that were not requested.
-- Use the dataset information provided to understand the available columns.
-- Focus on what the Coder must do with the existing `df`.
+- Use the workspace information provided to identify the available resources.
+- Plan inspection of files, schemas, documentation, or other resources when
+  their contents are needed to complete the task.
+- Do not assume the role or contents of a file solely from its name.
 - Do not write Python code.
-- Never invent, assume, or infer column names.
-- Refer only to columns explicitly listed in the dataset information.
+- Never invent, assume, or infer column names, schemas, file contents, or
+  relationships that have not been inspected.
 - For exploratory feature selection, do not preselect predictors based only
   on their names or assumed meaning.
 - Plan an empirical investigation of the available features before deciding
@@ -33,8 +36,8 @@ Rules:
         ),
         (
             "human",
-            "Task description: {task}\n"
-            "Dataset info: {dataset_info}\n\n"
+            "Task description:\n{task}\n\n"
+            "Workspace information:\n{dataset_info}\n\n"
             "Provide the numbered instructions."
         ),
     ]

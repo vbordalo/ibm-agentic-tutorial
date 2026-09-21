@@ -3,8 +3,10 @@ from typing import Any, TypedDict
 
 class GraphState(TypedDict, total=False):
     task: str
-    uploaded_file: Any
-    df: Any
+    task_id: str
+    uploaded_files: list[Any]
+    workspace_path: str
+    workspace_files: list[str]
     dataset_info: str
     instructions: str
     code: str

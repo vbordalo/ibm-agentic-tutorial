@@ -13,7 +13,7 @@ with gr.Blocks() as demo:
     """)
 
     with gr.Row():
-        file_input = gr.File(label="📂 Upload CSV / Excel (optional)", file_types=[".csv", ".xlsx", ".xls"])
+        file_input = gr.File(label="📂 Upload CSV / Excel (optional)", file_types=[".csv", ".xlsx", ".xls", ".data"], file_count="multiple")
         task_input = gr.Textbox(label="📝 Task description", placeholder="e.g. train a linear regression model", lines=3)
 
     run_btn = gr.Button("🚀 Run", variant="primary")
@@ -25,8 +25,8 @@ with gr.Blocks() as demo:
     reviewer_box = gr.Textbox(label="🧐 Reviewer - suggestion (if any)", lines=6)
     final_box    = gr.Textbox(label="🎉 Final output", lines=8)
 
-    def on_click(task, uploaded_file):
-        out = run_workflow(task, uploaded_file)
+    def on_click(task, uploaded_files):
+        out = run_workflow(task, uploaded_files)
         return (
             out["planner"], out["coder"], out["executor_output"],
             out["executor_error"], out["reviewer"], out["final_output"],

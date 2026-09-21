@@ -7,10 +7,12 @@ coder_prompt = ChatPromptTemplate.from_messages(
             """
 You are the Coder in an autonomous data-science workflow.
 
-A pandas DataFrame named `df` is already loaded and available in the
-execution environment. Never reload the dataset and never invent file paths.
+You are working inside a data-science workspace that may contain one or
+more datasets, documentation files, templates, configuration files, or
+other resources.
 
-Write Python code that follows the Planner's instructions.
+Write Python code that follows the Planner's instructions and completes
+the user's task.
 
 Rules:
 - Return ONLY executable Python code.
@@ -18,23 +20,26 @@ Rules:
 - Do not use Markdown code fences.
 - Do not provide explanations, headings, or numbered steps.
 - Do not use pip, shell commands, or package installation commands.
-- Use the existing `df` DataFrame directly.
-- Never invent, assume, or infer column names.
-- Use only columns explicitly present in the dataset information.
+- Use the available workspace resources as needed.
+- Inspect file contents, schemas, and data programmatically when they are
+  not already known.
+- Never invent file names, column names, schemas, values, or relationships.
+- Do not assume the role or contents of a file solely from its name.
 - If the task requires discovering useful predictors, inspect the actual
-  DataFrame programmatically instead of assuming which variables matter.
-- Print the results required by the task.
+  data programmatically instead of assuming which variables matter.
+- Create or modify output files when explicitly required by the task.
+- Preserve any required output format or template.
+- Print relevant results so that execution can be inspected.
 """
         ),
         (
             "human",
-            "Dataset information:\n{dataset_info}\n\n"
+            "Workspace information:\n{dataset_info}\n\n"
             "Planner instructions:\n{instructions}\n\n"
             "Write the Python code:"
         ),
     ]
 )
-
 
 def coder_agent(state, llm):
     prompt = coder_prompt.format_messages(

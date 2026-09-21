@@ -1,10 +1,12 @@
 from pathlib import Path
+import shutil
 
 # LangChain
 from langchain_ollama import ChatOllama
 
 from run_trace import RunTrace
 from workflow import build_workflow
+
 
 # Environment and LLM setup
 
@@ -16,17 +18,89 @@ llm = ChatOllama(
     temperature=TEMPERATURE,
 )
 
-def run_workflow(task: str, uploaded_file) -> dict:
+
+def prepare_run_workspace(
+    run_dir: Path,
+    uploaded_files=None,
+    source_workspace=None,
+) -> Path:
+    workspace = run_dir / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    if uploaded_files and source_workspace:
+        raise ValueError(
+            "Provide either uploaded_files or workspace_path, not both."
+        )
+
+    if uploaded_files:
+        for file_obj in uploaded_files:
+            source = Path(str(file_obj))
+
+            if not source.is_file():
+                raise FileNotFoundError(
+                    f"Uploaded file not found: {source}"
+                )
+
+            shutil.copy2(
+                source,
+                workspace / source.name,
+            )
+
+    elif source_workspace:
+        source_workspace = Path(source_workspace).expanduser().resolve()
+
+        if not source_workspace.is_dir():
+            raise FileNotFoundError(
+                f"Workspace not found: {source_workspace}"
+            )
+
+        for source in source_workspace.iterdir():
+            destination = workspace / source.name
+
+            if source.is_dir():
+                shutil.copytree(source, destination)
+            else:
+                shutil.copy2(source, destination)
+
+    return workspace
+
+def run_workflow(
+    task: str,
+    uploaded_files=None,
+    workspace_path=None,
+    task_id=None,
+) -> dict:
+
+    if uploaded_files:
+        dataset_name = ", ".join(
+            Path(str(file)).name
+            for file in uploaded_files
+        )
+    elif workspace_path:
+        dataset_name = Path(workspace_path).name
+    else:
+        dataset_name = None
 
     trace = RunTrace(
         model=MODEL,
         temperature=TEMPERATURE,
         task=task,
-        dataset_name=Path(str(uploaded_file)).name if uploaded_file else None,
+        dataset_name=dataset_name,
+    )
+
+    run_workspace = prepare_run_workspace(
+        run_dir=trace.run_dir,
+        uploaded_files=uploaded_files,
+        source_workspace=workspace_path,
     )
 
     app = build_workflow(trace, llm)
-    final_state = app.invoke({"task": task, "uploaded_file": uploaded_file})
+
+    final_state = app.invoke({
+        "task": task,
+        "workspace_path": str(run_workspace),
+        "task_id": task_id,
+    })
 
     if final_state.get("exec_error"):
         if final_state.get("suggestions"):
@@ -56,11 +130,13 @@ def run_workflow(task: str, uploaded_file) -> dict:
         "reviewer": final_state.get("suggestions", ""),
         "final_output": "",
     }
+
     if final_state.get("exec_error"):
         if final_state.get("suggestions"):
             result["final_output"] = (
                 "❗️  The system could not automatically fix the code.\n"
-                f"💡  Suggested next step for the human:\n{final_state['suggestions']}"
+                f"💡  Suggested next step for the human:\n"
+                f"{final_state['suggestions']}"
             )
         else:
             result["final_output"] = (
@@ -68,5 +144,9 @@ def run_workflow(task: str, uploaded_file) -> dict:
                 f"Error was:\n{final_state['exec_error']}"
             )
     else:
-        result["final_output"] = "✅  Code ran successfully!  Output:\n" + final_state["exec_output"]
+        result["final_output"] = (
+            "✅  Code ran successfully!  Output:\n"
+            + final_state["exec_output"]
+        )
+
     return result
