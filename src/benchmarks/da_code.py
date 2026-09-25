@@ -6,12 +6,33 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import click
+import importlib
 
 SRC_DIR = Path(__file__).resolve().parents[1]
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 from run_service import run_workflow
 
+
+def load_da_code_metric(
+    metric_name: str,
+    da_code_root: Path,
+):
+    da_code_root = da_code_root.expanduser().resolve()
+
+    if str(da_code_root) not in sys.path:
+        sys.path.insert(0, str(da_code_root))
+
+    module = importlib.import_module(
+        "da_agent.evaluators.metrics.table"
+    )
+
+    try:
+        return getattr(module, metric_name)
+    except AttributeError as exc:
+        raise ValueError(
+            f"Unknown DA-Code evaluation metric: {metric_name}"
+        ) from exc
 
 @dataclass
 class DACodeTask:
@@ -103,6 +124,34 @@ def load_da_code_task(
         eval_config=eval_record,
     )
 
+def evaluate_da_code_task(
+    task: DACodeTask,
+    run_workspace: Path,
+    da_code_root: Path,
+) -> float:
+    eval_config = task.eval_config
+
+    metric_name = eval_config["func"][0]
+    result_config = eval_config["result"][0]
+    options = eval_config.get("options", [{}])[0]
+
+    metric = load_da_code_metric(
+        metric_name=metric_name,
+        da_code_root=da_code_root,
+    )
+
+    filename = result_config["file"][0]
+
+    output_file = run_workspace / filename
+    gold_file = task.gold_path / filename
+
+    score = metric(
+        str(output_file),
+        str(gold_file),
+        **options,
+    )
+
+    return score
 
 @click.command()
 @click.option(
@@ -188,6 +237,15 @@ def main(
 
     click.echo("Final output:")
     click.echo(result["final_output"])
+
+    score = evaluate_da_code_task(
+        task=task,
+        run_workspace=Path(result["workspace_path"]),
+        da_code_root=da_code_root,
+    )
+
+    click.echo()
+    click.echo(f"DA-Code score: {score}")
 
 if __name__ == "__main__":
     main()

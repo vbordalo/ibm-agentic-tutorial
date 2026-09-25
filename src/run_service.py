@@ -123,6 +123,9 @@ def run_workflow(
     )
 
     result = {
+        "run_id": trace.run_id,
+        "run_dir": str(trace.run_dir),
+        "workspace_path": str(run_workspace),
         "planner": final_state.get("instructions", ""),
         "coder": final_state.get("code", ""),
         "executor_output": final_state.get("exec_output", ""),
