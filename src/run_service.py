@@ -1,5 +1,5 @@
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 # LangChain
 from langchain_ollama import ChatOllama
@@ -7,15 +7,15 @@ from langchain_ollama import ChatOllama
 from run_trace import RunTrace
 from workflow import build_workflow
 
-
 # Environment and LLM setup
 
 MODEL = "qwen2.5:3b-instruct-q4_K_M"
 TEMPERATURE = 0.0
-
+SEED = 42
 llm = ChatOllama(
     model=MODEL,
     temperature=TEMPERATURE,
+    seed=SEED,
 )
 
 

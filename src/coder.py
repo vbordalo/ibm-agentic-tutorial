@@ -1,5 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate
 
+from output_parsing import extract_python_code
+
 coder_prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -48,14 +50,6 @@ def coder_agent(state, llm):
     )
 
     response = llm.invoke(prompt)
-    code = response.content.strip()
-
-    # Defensive cleanup in case the model still returns Markdown fences.
-    if code.startswith("```python"):
-        code = code[len("```python"):].strip()
-    if code.startswith("```"):
-        code = code[3:].strip()
-    if code.endswith("```"):
-        code = code[:-3].strip()
+    code = extract_python_code(response.content)
 
     return {"code": code}

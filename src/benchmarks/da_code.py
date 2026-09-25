@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import click
+
+SRC_DIR = Path(__file__).resolve().parents[1]
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+from run_service import run_workflow
 
 
 @dataclass
@@ -106,17 +112,25 @@ def load_da_code_task(
 )
 @click.option(
     "--da-code-root",
-    required=True,
+    default=Path.home() / "repos" / "da-code",
     type=click.Path(
         exists=True,
         file_okay=False,
         path_type=Path,
     ),
+    show_default=True,
     help="Path to the cloned DA-Code repository.",
+)
+@click.option(
+    "--run",
+    "run_agent",
+    is_flag=True,
+    help="Run the task through the data-science agent.",
 )
 def main(
     task_id: str,
     da_code_root: Path,
+    run_agent: bool,
 ) -> None:
     task = load_da_code_task(
         task_id=task_id,
@@ -137,6 +151,43 @@ def main(
     for path in sorted(task.workspace_path.iterdir()):
         click.echo(f"  - {path.name}")
 
+    if not run_agent:
+        return
+
+    click.echo()
+    click.echo("Running agent...")
+    click.echo()
+
+    result = run_workflow(
+        task=task.instruction,
+        workspace_path=task.workspace_path,
+        task_id=task.task_id,
+    )
+
+    click.echo("Planner:")
+    click.echo(result["planner"])
+    click.echo()
+
+    click.echo("Coder:")
+    click.echo(result["coder"])
+    click.echo()
+
+    click.echo("Executor output:")
+    click.echo(result["executor_output"] or "<empty>")
+    click.echo()
+
+    if result["executor_error"]:
+        click.echo("Executor error:")
+        click.echo(result["executor_error"])
+        click.echo()
+
+    if result["reviewer"]:
+        click.echo("Reviewer:")
+        click.echo(result["reviewer"])
+        click.echo()
+
+    click.echo("Final output:")
+    click.echo(result["final_output"])
 
 if __name__ == "__main__":
     main()

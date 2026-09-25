@@ -1,5 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate
 
+from output_parsing import extract_python_code
+
 reviewer_prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -78,17 +80,7 @@ def reviewer_agent(state, llm):
             "code": state["code"],
         }
 
-    corrected = reply
-
-    # Defensive cleanup in case the model ignores the output contract.
-    if corrected.startswith("```python"):
-        corrected = corrected[len("```python"):].strip()
-
-    if corrected.startswith("```"):
-        corrected = corrected[3:].strip()
-
-    if corrected.endswith("```"):
-        corrected = corrected[:-3].strip()
+    corrected = extract_python_code(reply)
 
     return {
         "code": corrected,

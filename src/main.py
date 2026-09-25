@@ -7,14 +7,19 @@ from run_service import run_workflow
 with gr.Blocks() as demo:
     gr.Markdown("""
         # 🤖 Data-Science Assistant (LangGraph + local model)
-        1️⃣ Upload a CSV or Excel file.  
-        2️⃣ Describe the analysis / model you want in plain English.  
-        3️⃣ Press Run - the assistant will plan, code, execute, review and finally give you the result.
+        1️⃣ Add one or more files to the workspace.  
+        2️⃣ Describe the analysis or task you want in plain English.  
+        3️⃣ Press Run - the assistant will inspect the workspace, plan, code, execute, review, and return the result.
     """)
 
     with gr.Row():
-        file_input = gr.File(label="📂 Upload CSV / Excel (optional)", file_types=[".csv", ".xlsx", ".xls", ".data"], file_count="multiple")
-        task_input = gr.Textbox(label="📝 Task description", placeholder="e.g. train a linear regression model", lines=3)
+        file_input = gr.File(label="📂 Workspace files (optional)",
+                             file_types=[".csv", ".xlsx", ".xls", ".data"],
+                             file_count="multiple",
+                             )
+        task_input = gr.Textbox(label="📝 Task description",
+                                placeholder="e.g. train a linear regression model",
+                                lines=3)
 
     run_btn = gr.Button("🚀 Run", variant="primary")
 
